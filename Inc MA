@@ -1,0 +1,26 @@
+SELECT o.country_code                                                                                  AS country_code,
+       CONCAT('P', o.store_address_id)                                                                 AS store_address_id,
+       s.id                                                                                            AS store_id,
+       o.partner_commission_percentage                                                                 AS partner_commission_percentage,
+       REPLACE(ROUND(SUM(oif.partner_charged_refund_eur), 2), '.', ',')                                AS amount_eur,
+       REPLACE(ROUND(SUM(oif.partner_charged_refund_eur * oif.refund_exchange_rate), 2), '.', ',')     AS amount_local_cur,
+       CASE
+           WHEN s.is_food = FALSE OR s.id IN (1) -- include the store ids https://docs.google.com/spreadsheets/u/1/d/1zzW9i2koerglEm2fknJWm2x9436W-yiZO7ZzSKqG7tA/edit#gid=1019216283
+               THEN 'COSTE_INCIDENCIAS'
+           ELSE 'COSTE_INC_MANUAL' END                                                                 AS concept
+FROM order_incident_facts oif
+    JOIN orders           o ON o.id = oif.order_id
+    JOIN geography        g ON g.code = o.city_code
+    JOIN store_addresses sa ON o.store_address_id = sa.id
+    JOIN stores           s ON s.id = sa.store_id
+WHERE g.country_code IN ('IT', 'ES', 'PT', 'MA', 'CI', 'KE')
+AND CONVERT_TIMEZONE('utc', g.time_zone, oif.refund_update_time) BETWEEN '2022-01-01 00:00:00'
+    AND '2022-01-15 23:59:59' -- Put invoicing period. For example for 1Q sept '2020-09-01 00:00:00' AND '2020-09-15 23:59:59'
+  AND o.creation_time_local BETWEEN '2021-12-01 00:00:00'
+    AND '2022-01-15 23:59:59' -- Put month and a half taking the last day of the invoicing period as reference. For example for 1Q sept '2020-08-01 00:00:00' AND '2020-09-15 23:59:59'
+  AND sa.company_detail_id IS NOT NULL
+  AND o.mcd_partner = FALSE     -- This condition is only applicable to SWE countries, GG countries should include mcdo
+  AND NOT (g.country_code IN ('IT', 'ES') AND s.store_name = 'Burger King')
+  AND NOT (g.country_code = 'MA' and s.store_name IN('KFC','Marjane','Marjane Solidaire'))
+ --  AND o.store_address_id IN (50693, 195721)
+GROUP BY 1, 2, 3, 4, 7;
